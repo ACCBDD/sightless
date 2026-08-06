@@ -1,0 +1,21 @@
+{
+  "targets": [
+    "swap",
+    "lidar_target"
+  ],
+  "passes": [
+    {
+      "name": "sightless:black_screen",
+      "intarget": "minecraft:main",
+      "outtarget": "swap",
+      "auxtargets": [
+        { "name": "LidarSampler", "id":  "lidar_target" }
+      ]
+    },
+    {
+      "name": "blit",
+      "intarget": "swap",
+      "outtarget": "minecraft:main"
+    }
+  ]
+}
