@@ -12,7 +12,7 @@ import static com.accbdd.sightless.Sightless.MODID;
 public class SightlessBlockEntities {
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, MODID);
 
-    public static final Supplier<BlockEntityType<?>> SIGHTED_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
+    public static final Supplier<BlockEntityType<SightedBlockEntity>> SIGHTED_BLOCK_ENTITY = BLOCK_ENTITY_TYPES.register(
             "sighted_block",
             () -> BlockEntityType.Builder.of(
                     SightedBlockEntity::new,

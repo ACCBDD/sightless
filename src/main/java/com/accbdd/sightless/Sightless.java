@@ -1,5 +1,6 @@
 package com.accbdd.sightless;
 
+import com.accbdd.sightless.client.SightedBlockEntityRenderer;
 import com.accbdd.sightless.client.SightlessKeys;
 import com.accbdd.sightless.client.particle.LidarParticle;
 import com.accbdd.sightless.register.*;
@@ -102,12 +103,11 @@ public class Sightless {
         }
 
         @SubscribeEvent
-        public static void onClientTick(ClientTickEvent.Post event) {
-
-//            while (SightlessKeys.TOGGLE_SHADER_KEY.consumeClick()) {
-//                boolean currentState = ShaderManager.isActive();
-//                ShaderManager.setActive(!currentState);
-//            }
+        public static void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
+            event.registerBlockEntityRenderer(
+                    SightlessBlockEntities.SIGHTED_BLOCK_ENTITY.get(),
+                    SightedBlockEntityRenderer::new
+            );
         }
 
         private static void reloadChain() {
