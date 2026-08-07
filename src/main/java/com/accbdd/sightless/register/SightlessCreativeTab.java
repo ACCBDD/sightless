@@ -16,7 +16,8 @@ public class SightlessCreativeTab {
                     .title(Component.translatable("itemGroup.sightless"))
                     .icon(() -> SightlessItems.LIDAR.get().getDefaultInstance())
                     .displayItems((parameters, output) -> {
-                        output.accept(SightlessItems.LIDAR.get());
+                        output.accept(SightlessItems.LIDAR);
+                        output.accept(SightlessItems.SIGHTED_BLOCK);
                     }).build()
     );
 }

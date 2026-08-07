@@ -2,9 +2,7 @@ package com.accbdd.sightless;
 
 import com.accbdd.sightless.client.SightlessKeys;
 import com.accbdd.sightless.client.particle.LidarParticle;
-import com.accbdd.sightless.register.SightlessCreativeTab;
-import com.accbdd.sightless.register.SightlessItems;
-import com.accbdd.sightless.register.SightlessParticleTypes;
+import com.accbdd.sightless.register.*;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
@@ -37,6 +35,8 @@ public class Sightless {
     public Sightless(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
         SightlessItems.ITEMS.register(modEventBus);
+        SightlessBlocks.BLOCKS.register(modEventBus);
+        SightlessBlockEntities.BLOCK_ENTITY_TYPES.register(modEventBus);
         SightlessCreativeTab.CREATIVE_MODE_TABS.register(modEventBus);
         SightlessParticleTypes.PARTICLE_TYPES.register(modEventBus);
 
