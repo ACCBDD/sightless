@@ -9,7 +9,8 @@
       "intarget": "minecraft:main",
       "outtarget": "swap",
       "auxtargets": [
-        { "name": "LidarSampler", "id":  "lidar_target" }
+        { "name": "LidarSampler", "id":  "lidar_target" },
+        { "name": "DiffuseDepthSampler", "id": "minecraft:main:depth" }
       ]
     },
     {

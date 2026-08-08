@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "sightless:block/sighted_block"
+    }
+  }
+}
