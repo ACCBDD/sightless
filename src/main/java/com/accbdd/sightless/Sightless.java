@@ -39,6 +39,7 @@ import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GLUtil;
 import org.lwjgl.system.MemoryUtil;
 import org.slf4j.Logger;
 
@@ -77,7 +78,8 @@ public class Sightless {
         private static PostChain blackoutChain;
         private static PostPass blackScreenPass;
         private static int sphereDataTexId;
-        private static final int MAX_SPHERES = 1024; // plenty of headroom, cheap to allocate
+        private static final int MAX_SPHERES = 1024; // cheap to allocate more
+        private static FloatBuffer sphereBuf;
 
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
@@ -138,22 +140,21 @@ public class Sightless {
                 }
 
                 int sphereCount = Math.min(SightedBlockEntity.ACTIVE.size(), MAX_SPHERES);
-                FloatBuffer buf = MemoryUtil.memAllocFloat(sphereCount * 4);
+                sphereBuf.clear(); // resets the cursor
                 int written = 0;
                 for (SightedBlockEntity be : SightedBlockEntity.ACTIVE) {
                     if (written >= sphereCount) break;
                     Vec3 rel = Vec3.atCenterOf(be.getBlockPos()).subtract(camPos);
                     float r = be.getRevealRadius();
-                    buf.put((float) rel.x).put((float) rel.y).put((float) rel.z).put(r * r);
+                    sphereBuf.put((float) rel.x).put((float) rel.y).put((float) rel.z).put(r * r);
                     written++;
                 }
-                buf.flip();
+                sphereBuf.flip();
 
                 if (written > 0) {
                     GlStateManager._bindTexture(sphereDataTexId);
-                    GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, written, 1, GL11.GL_RGBA, GL11.GL_FLOAT, buf);
+                    GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, written, 1, GL11.GL_RGBA, GL11.GL_FLOAT, sphereBuf);
                 }
-                MemoryUtil.memFree(buf);
 
                 EffectInstance effect = blackScreenPass.effect;
                 effect.safeGetUniform("InvViewProjMat").set(invViewProj);
@@ -170,6 +171,12 @@ public class Sightless {
         private static void reloadChain() {
             Minecraft minecraft = Minecraft.getInstance();
             try {
+                if (blackoutChain != null) {
+                    blackoutChain.close();
+                }
+                if (sphereDataTexId != 0) {
+                    GlStateManager._deleteTexture(sphereDataTexId);
+                }
                 blackoutChain = new PostChain(minecraft.getTextureManager(), minecraft.getResourceManager(), minecraft.getMainRenderTarget(), ResourceLocation.fromNamespaceAndPath(MODID, "shaders/post/sightless.json"));
                 createSphereTexture();
                 blackScreenPass = blackoutChain.passes.get(0);
@@ -185,14 +192,19 @@ public class Sightless {
             blackoutChain.resize(minecraft.getMainRenderTarget().width, minecraft.getMainRenderTarget().height);
         }
 
-        private static void createSphereTexture() {
+        private static void createSphereTexture() { // stores block positions clientside in a texture for gpu access
             sphereDataTexId = GlStateManager._genTexture();
             GlStateManager._bindTexture(sphereDataTexId);
-            GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-            GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-            GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-            GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST); // what happens if we sample outside a texel's center
+            GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST); // same
+            GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE); // what happens if samples outside the texture
+            GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE); // s is horizontal, t is vertical
             GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_RGBA32F, MAX_SPHERES, 1, 0, GL11.GL_RGBA, GL11.GL_FLOAT, (FloatBuffer) null);
+
+            if (sphereBuf != null) {
+                MemoryUtil.memFree(sphereBuf);
+            }
+            sphereBuf = MemoryUtil.memAllocFloat(MAX_SPHERES * 4);
         }
 
         public static PostChain getBlackoutChain() {
