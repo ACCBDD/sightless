@@ -39,7 +39,6 @@ import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL30;
-import org.lwjgl.opengl.GLUtil;
 import org.lwjgl.system.MemoryUtil;
 import org.slf4j.Logger;
 
@@ -130,35 +129,38 @@ public class Sightless {
             }
 
             if (!SightlessKeys.TOGGLE_SHADER_KEY.isDown() && blackoutChain != null && event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
-                Matrix4f proj = new Matrix4f(RenderSystem.getProjectionMatrix());
-                Matrix4f modelView = new Matrix4f(RenderSystem.getModelViewMatrix());
-                Matrix4f invViewProj = proj.mul(modelView, new Matrix4f()).invert();
-                Vec3 camPos = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
                 RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
                 if (blackoutChain.screenWidth != main.width || blackoutChain.screenHeight != main.height) {
                     resizeChain();
                 }
 
-                int sphereCount = Math.min(SightedBlockEntity.ACTIVE.size(), MAX_SPHERES);
-                sphereBuf.clear(); // resets the cursor
-                int written = 0;
-                for (SightedBlockEntity be : SightedBlockEntity.ACTIVE) {
-                    if (written >= sphereCount) break;
-                    Vec3 rel = Vec3.atCenterOf(be.getBlockPos()).subtract(camPos);
-                    float r = be.getRevealRadius();
-                    sphereBuf.put((float) rel.x).put((float) rel.y).put((float) rel.z).put(r * r);
-                    written++;
-                }
-                sphereBuf.flip();
+                if (Minecraft.getInstance().screen == null) {
+                    Matrix4f proj = new Matrix4f(RenderSystem.getProjectionMatrix());
+                    Matrix4f modelView = new Matrix4f(RenderSystem.getModelViewMatrix());
+                    Matrix4f invViewProj = proj.mul(modelView, new Matrix4f()).invert();
+                    Vec3 camPos = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+                    int sphereCount = Math.min(SightedBlockEntity.ACTIVE.size(), MAX_SPHERES);
+                    sphereBuf.clear(); // resets the cursor
+                    int written = 0;
+                    for (SightedBlockEntity be : SightedBlockEntity.ACTIVE) {
+                        if (written >= sphereCount) break;
+                        Vec3 rel = Vec3.atCenterOf(be.getBlockPos()).subtract(camPos);
+                        float r = be.getRevealRadius();
+                        sphereBuf.put((float) rel.x).put((float) rel.y).put((float) rel.z).put(r * r);
+                        written++;
+                    }
+                    sphereBuf.flip();
 
-                if (written > 0) {
-                    GlStateManager._bindTexture(sphereDataTexId);
-                    GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, written, 1, GL11.GL_RGBA, GL11.GL_FLOAT, sphereBuf);
+                    if (written > 0) {
+                        GlStateManager._bindTexture(sphereDataTexId);
+                        GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, written, 1, GL11.GL_RGBA, GL11.GL_FLOAT, sphereBuf);
+                    }
+
+                    EffectInstance effect = blackScreenPass.effect;
+                    effect.safeGetUniform("InvViewProjMat").set(invViewProj);
+                    effect.safeGetUniform("SphereCount").set(written);
                 }
 
-                EffectInstance effect = blackScreenPass.effect;
-                effect.safeGetUniform("InvViewProjMat").set(invViewProj);
-                effect.safeGetUniform("SphereCount").set(written);
                 blackoutChain.process(event.getPartialTick().getGameTimeDeltaPartialTick(true));
             }
         }
