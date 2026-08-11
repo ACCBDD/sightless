@@ -1,4 +1,5 @@
 {
+  "blend": { "func": "add", "srcrgb": "one", "dstrgb": "zero" },
   "vertex": "sightless:black_screen",
   "fragment": "sightless:black_screen",
   "attributes": [ "Position" ],

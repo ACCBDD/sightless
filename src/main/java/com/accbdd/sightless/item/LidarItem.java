@@ -49,7 +49,7 @@ public class LidarItem extends Item {
                 right = look.cross(new Vec3(0, 1, 0)).normalize();
             }
             Vec3 up = right.cross(look).normalize();
-            double fuzziness = 0;
+            double fuzziness = 1;
             RandomSource random = level.getRandom();
 
             for (int x = -10; x <= 10; x++) {

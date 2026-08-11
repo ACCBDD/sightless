@@ -6,10 +6,8 @@ import com.accbdd.sightless.client.particle.LidarParticle;
 import com.accbdd.sightless.register.*;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.EffectInstance;
 import net.minecraft.client.renderer.PostChain;
 import net.minecraft.client.renderer.PostPass;
 import net.minecraft.resources.ResourceLocation;
@@ -76,8 +74,6 @@ public class Sightless {
     public static class ClientModEvents {
         private static PostChain blackoutChain;
         private static PostPass blackScreenPass;
-        private static PostChain translucentChain;      // early opaque-only mask
-        private static PostPass translucentPass;
 
         private static int sphereDataTexId;
         private static final int MAX_SPHERES = 1024; // cheap to allocate more
@@ -126,11 +122,7 @@ public class Sightless {
         public static void onRenderLevelStage(RenderLevelStageEvent event) {
             if (SightlessKeys.TOGGLE_SHADER_KEY.isDown() || blackoutChain == null) return;
 
-            if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_CUTOUT_BLOCKS) {
-                prepareUniforms(event);
-                translucentChain.process(event.getPartialTick().getGameTimeDeltaPartialTick(true));
-                Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
-            }
+            if (SightlessKeys.TOGGLE_SHADER_KEY.isDown() || blackoutChain == null) return;
 
             if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
                 RenderTarget lidarTarget = getBlackoutChain().getTempTarget("lidar_target");
@@ -140,7 +132,9 @@ public class Sightless {
             }
 
             if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
+                prepareUniforms(event);
                 blackoutChain.process(event.getPartialTick().getGameTimeDeltaPartialTick(true));
+                Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
             }
         }
 
@@ -181,8 +175,6 @@ public class Sightless {
 
                 blackScreenPass.effect.safeGetUniform("InvViewProjMat").set(invViewProj);
                 blackScreenPass.effect.safeGetUniform("SphereCount").set(written);
-                translucentPass.effect.safeGetUniform("InvViewProjMat").set(invViewProj);
-                translucentPass.effect.safeGetUniform("SphereCount").set(written);
             }
         }
 
@@ -190,22 +182,15 @@ public class Sightless {
             Minecraft minecraft = Minecraft.getInstance();
             try {
                 if (blackoutChain != null) blackoutChain.close();
-                if (translucentChain != null) translucentChain.close();
                 if (sphereDataTexId != 0) GlStateManager._deleteTexture(sphereDataTexId);
 
                 blackoutChain = new PostChain(minecraft.getTextureManager(), minecraft.getResourceManager(),
                         minecraft.getMainRenderTarget(), ResourceLocation.fromNamespaceAndPath(MODID, "shaders/post/sightless.json"));
-                translucentChain = new PostChain(minecraft.getTextureManager(), minecraft.getResourceManager(),
-                        minecraft.getMainRenderTarget(), ResourceLocation.fromNamespaceAndPath(MODID, "shaders/post/sightless_translucent.json"));
 
                 createSphereTexture();
 
-                blackScreenPass = blackoutChain.passes.get(0);
-                translucentPass = translucentChain.passes.get(0);
-
+                blackScreenPass = blackoutChain.passes.getFirst();
                 blackScreenPass.addAuxAsset("SphereSampler", () -> sphereDataTexId, MAX_SPHERES, 1);
-                translucentPass.addAuxAsset("SphereSampler", () -> sphereDataTexId, MAX_SPHERES, 1);
-
                 resizeChain();
             } catch (IOException exception) {
                 LOGGER.error("Failed to load blackout shaders", exception);
@@ -215,7 +200,6 @@ public class Sightless {
         private static void resizeChain() {
             Minecraft minecraft = Minecraft.getInstance();
             blackoutChain.resize(minecraft.getMainRenderTarget().width, minecraft.getMainRenderTarget().height);
-            translucentChain.resize(minecraft.getMainRenderTarget().width, minecraft.getMainRenderTarget().height);
         }
 
         private static void createSphereTexture() { // stores block positions clientside in a texture for gpu access
