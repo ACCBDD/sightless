@@ -76,6 +76,9 @@ public class Sightless {
     public static class ClientModEvents {
         private static PostChain blackoutChain;
         private static PostPass blackScreenPass;
+        private static PostChain translucentChain;      // early opaque-only mask
+        private static PostPass translucentPass;
+
         private static int sphereDataTexId;
         private static final int MAX_SPHERES = 1024; // cheap to allocate more
         private static FloatBuffer sphereBuf;
@@ -121,46 +124,22 @@ public class Sightless {
 
         @SubscribeEvent
         public static void onRenderLevelStage(RenderLevelStageEvent event) {
-            if (!SightlessKeys.TOGGLE_SHADER_KEY.isDown() && blackoutChain != null && event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+            if (SightlessKeys.TOGGLE_SHADER_KEY.isDown() || blackoutChain == null) return;
+
+            if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_CUTOUT_BLOCKS) {
+                prepareUniforms(event);
+                translucentChain.process(event.getPartialTick().getGameTimeDeltaPartialTick(true));
+                Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
+            }
+
+            if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
                 RenderTarget lidarTarget = getBlackoutChain().getTempTarget("lidar_target");
                 lidarTarget.setClearColor(0, 0, 0, 0);
                 lidarTarget.clear(false);
                 Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
             }
 
-            if (!SightlessKeys.TOGGLE_SHADER_KEY.isDown() && blackoutChain != null && event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
-                RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
-                if (blackoutChain.screenWidth != main.width || blackoutChain.screenHeight != main.height) {
-                    resizeChain();
-                }
-
-                if (Minecraft.getInstance().screen == null) {
-                    Matrix4f proj = new Matrix4f(RenderSystem.getProjectionMatrix());
-                    Matrix4f modelView = new Matrix4f(RenderSystem.getModelViewMatrix());
-                    Matrix4f invViewProj = proj.mul(modelView, new Matrix4f()).invert();
-                    Vec3 camPos = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
-                    int sphereCount = Math.min(SightedBlockEntity.ACTIVE.size(), MAX_SPHERES);
-                    sphereBuf.clear(); // resets the cursor
-                    int written = 0;
-                    for (SightedBlockEntity be : SightedBlockEntity.ACTIVE) {
-                        if (written >= sphereCount) break;
-                        Vec3 rel = Vec3.atCenterOf(be.getBlockPos()).subtract(camPos);
-                        float r = be.getRevealRadius();
-                        sphereBuf.put((float) rel.x).put((float) rel.y).put((float) rel.z).put(r * r);
-                        written++;
-                    }
-                    sphereBuf.flip();
-
-                    if (written > 0) {
-                        GlStateManager._bindTexture(sphereDataTexId);
-                        GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, written, 1, GL11.GL_RGBA, GL11.GL_FLOAT, sphereBuf);
-                    }
-
-                    EffectInstance effect = blackScreenPass.effect;
-                    effect.safeGetUniform("InvViewProjMat").set(invViewProj);
-                    effect.safeGetUniform("SphereCount").set(written);
-                }
-
+            if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
                 blackoutChain.process(event.getPartialTick().getGameTimeDeltaPartialTick(true));
             }
         }
@@ -170,28 +149,73 @@ public class Sightless {
             event.register(SightlessKeys.TOGGLE_SHADER_KEY);
         }
 
+        // controls resizing, calculates uniforms per frame - should only be run ONCE per frame
+        private static void prepareUniforms(RenderLevelStageEvent event) {
+            Matrix4f proj = new Matrix4f(event.getProjectionMatrix());
+            Matrix4f modelView = new Matrix4f(event.getModelViewMatrix());
+            Matrix4f invViewProj = proj.mul(modelView, new Matrix4f()).invert();
+            Vec3 camPos = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+
+            RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+            if (blackoutChain.screenWidth != main.width || blackoutChain.screenHeight != main.height) {
+                resizeChain();
+            }
+
+            if (Minecraft.getInstance().screen == null) {
+                int sphereCount = Math.min(SightedBlockEntity.ACTIVE.size(), MAX_SPHERES);
+                sphereBuf.clear();
+                int written = 0;
+                for (SightedBlockEntity be : SightedBlockEntity.ACTIVE) {
+                    if (written >= sphereCount) break;
+                    Vec3 rel = Vec3.atCenterOf(be.getBlockPos()).subtract(camPos);
+                    float r = be.getRevealRadius();
+                    sphereBuf.put((float) rel.x).put((float) rel.y).put((float) rel.z).put(r * r);
+                    written++;
+                }
+                sphereBuf.flip();
+
+                if (written > 0) {
+                    GlStateManager._bindTexture(sphereDataTexId);
+                    GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, written, 1, GL11.GL_RGBA, GL11.GL_FLOAT, sphereBuf);
+                }
+
+                blackScreenPass.effect.safeGetUniform("InvViewProjMat").set(invViewProj);
+                blackScreenPass.effect.safeGetUniform("SphereCount").set(written);
+                translucentPass.effect.safeGetUniform("InvViewProjMat").set(invViewProj);
+                translucentPass.effect.safeGetUniform("SphereCount").set(written);
+            }
+        }
+
         private static void reloadChain() {
             Minecraft minecraft = Minecraft.getInstance();
             try {
-                if (blackoutChain != null) {
-                    blackoutChain.close();
-                }
-                if (sphereDataTexId != 0) {
-                    GlStateManager._deleteTexture(sphereDataTexId);
-                }
-                blackoutChain = new PostChain(minecraft.getTextureManager(), minecraft.getResourceManager(), minecraft.getMainRenderTarget(), ResourceLocation.fromNamespaceAndPath(MODID, "shaders/post/sightless.json"));
+                if (blackoutChain != null) blackoutChain.close();
+                if (translucentChain != null) translucentChain.close();
+                if (sphereDataTexId != 0) GlStateManager._deleteTexture(sphereDataTexId);
+
+                blackoutChain = new PostChain(minecraft.getTextureManager(), minecraft.getResourceManager(),
+                        minecraft.getMainRenderTarget(), ResourceLocation.fromNamespaceAndPath(MODID, "shaders/post/sightless.json"));
+                translucentChain = new PostChain(minecraft.getTextureManager(), minecraft.getResourceManager(),
+                        minecraft.getMainRenderTarget(), ResourceLocation.fromNamespaceAndPath(MODID, "shaders/post/sightless_translucent.json"));
+
                 createSphereTexture();
+
                 blackScreenPass = blackoutChain.passes.get(0);
+                translucentPass = translucentChain.passes.get(0);
+
                 blackScreenPass.addAuxAsset("SphereSampler", () -> sphereDataTexId, MAX_SPHERES, 1);
+                translucentPass.addAuxAsset("SphereSampler", () -> sphereDataTexId, MAX_SPHERES, 1);
+
                 resizeChain();
             } catch (IOException exception) {
-                LOGGER.error("Failed to load blackout shader", exception);
+                LOGGER.error("Failed to load blackout shaders", exception);
             }
         }
 
         private static void resizeChain() {
             Minecraft minecraft = Minecraft.getInstance();
             blackoutChain.resize(minecraft.getMainRenderTarget().width, minecraft.getMainRenderTarget().height);
+            translucentChain.resize(minecraft.getMainRenderTarget().width, minecraft.getMainRenderTarget().height);
         }
 
         private static void createSphereTexture() { // stores block positions clientside in a texture for gpu access

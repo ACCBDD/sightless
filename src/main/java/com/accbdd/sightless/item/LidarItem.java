@@ -49,7 +49,7 @@ public class LidarItem extends Item {
                 right = look.cross(new Vec3(0, 1, 0)).normalize();
             }
             Vec3 up = right.cross(look).normalize();
-            double fuzziness = 1;
+            double fuzziness = 0;
             RandomSource random = level.getRandom();
 
             for (int x = -10; x <= 10; x++) {
@@ -71,7 +71,7 @@ public class LidarItem extends Item {
                         Vec3 color = new Vec3(1, 0, 0);
                         if (finalHit.getType() == HitResult.Type.BLOCK) {
                             color = new Vec3(
-                                    ratio,
+                                    Math.min(1, ratio * 2F),
                                     0.8F - (ratio * 0.8F * 0.5F),
                                     0.8F - ratio * 0.8F);
                         }
